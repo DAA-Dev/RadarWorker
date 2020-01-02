@@ -22,7 +22,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="config.py" />
-    <Compile Include="workers\mapworker.py">
+    <Compile Include="workers\MapWorker.py">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="tester.py">

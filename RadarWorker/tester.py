@@ -1,5 +1,5 @@
 import logging, config
-from workers import mapworker
+from workers import MapWorker
 from datetime import datetime, timezone
 from RadarWorker import RadarWorker
 
@@ -18,7 +18,8 @@ print()
 
 logging.info(TAG+'beginning to test the MapWorker')
 
-map_worker = mapworker.MapWorker([42.114229, -88.113506])
-map_worker = mapworker.MapWorker([39.547561, -104.980642])
+map_worker = MapWorker.MapWorker([42.114229, -88.113506])
+map_worker.gps_coordinate = [42.114229, -88.113506]
+#map_worker = mapworker.MapWorker([39.547561, -104.980642])
 
 

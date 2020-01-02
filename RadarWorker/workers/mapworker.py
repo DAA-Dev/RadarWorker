@@ -1,5 +1,6 @@
-import requests, logging, os, config, Pillow
+import requests, logging, os, config
 import numpy as np
+from PIL import Image
 
 TAG = 'MapWorker - '
 
@@ -22,6 +23,16 @@ class MapWorker():
     @property
     def tilepath(self):
         return self.__tilepath
+
+    @property
+    def gps_coordinate(self):
+        return self.__gps_coordinate
+
+    @gps_coordinate.setter
+    def gps_coordinate(self, gps_coordinate):
+        self.__gps_coordinate = gps_coordinate
+        self.update_tile()
+
 
     def update_tile(self):
         if self.__rectangular_tiles:
@@ -85,11 +96,27 @@ class MapWorker():
         y = int(left_path[left_path.index('+')+1:ind+1])
         logging.info(TAG+'the y value of the right gps tile is {}'.format(y))
 
-        right_path = pull_tile(x + 1, y, self.__zoom_level)
+        right_path = self.pull_tile(x + 1, y, self.__zoom_level)
+        imgs = [Image.open(left_path), Image.open(right_path)]
+        widths, heights = zip(*(i.size for i in imgs))
 
-        # Code for new GPS range calculation
-        
+        tot_width = sum(widths)
+        max_height = max(heights)
+        combined_image = Image.new('RGB', (tot_width, max_height))
 
+        x_position = 0
+        for img in imgs:
+          combined_image.paste(img, (x_position,0))
+          x_position += img.size[0]
+        combined_image.save(LOC_FOLS['map']+'stitched.png')
+
+        long_max = self.__gps_range[1][1]
+        long_min = self.__gps_range[1][0]
+        range = (long_max - long_min)
+        self.__gps_range = (self.__gps_range[0], (long_min, long_max+range))
+        logging.info(TAG+'changing the range to {}'.format(self.__gps_range))
+
+        return LOC_FOLS['map']+'stitched.png'
 
     # Handles the dowload and save of a requested tile
     @staticmethod
@@ -125,3 +152,5 @@ class MapWorker():
             return True
         except:
             return False
+
+# If you want to make better, delete old files from 'maps'

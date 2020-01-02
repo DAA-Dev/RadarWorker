@@ -1,5 +1,5 @@
 import logging, math, os, config, datetime, requests
-from workers import mapworker
+from workers import MapWorker
 from txtparsing import DataWorker
 
 
