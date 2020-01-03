@@ -7,8 +7,9 @@ TAG = 'MapWorker - '
 LOC_FOLS = config.LOC_FOLS
 
 # Manages ONE TILE ONLY, either rectangular or square
+# Minimum zoom level is 4
 class MapWorker():
-    def __init__(self, gps_coordinate, zoom_level=8, rectangular_tiles=True):
+    def __init__(self, gps_coordinate, zoom_level=4, rectangular_tiles=True):
         self.cl_wd()
         # These attributes should never change
         self.__zoom_level = zoom_level
@@ -33,6 +34,9 @@ class MapWorker():
         self.__gps_coordinate = gps_coordinate
         self.update_tile()
 
+    def get_bounding_points(self):
+        return ((self.__gps_range[0][0], self.__gps_range[1][0]), 
+                (self.__gps_range[0][1], self.__gps_range[1][1]))
 
     def update_tile(self):
         if self.__rectangular_tiles:
@@ -74,7 +78,7 @@ class MapWorker():
         found_y = binary_search(possible_y[0], possible_y[1], self.__gps_coordinate[0], generate_range_y)
         found_y = possible_y[1] - found_y
 
-        self.__gps_range = ((90 - found_y * lat_increment + lat_increment, 90 - found_y * lat_increment), 
+        self.__gps_range = ((90 - (found_y * lat_increment) - lat_increment, 90 - (found_y * lat_increment)), 
                      (found_x * lon_increment - 180, found_x * lon_increment + lon_increment - 180))
         
         return self.pull_tile(found_x, found_y, self.__zoom_level)
@@ -153,4 +157,5 @@ class MapWorker():
         except:
             return False
 
-# If you want to make better, delete old files from 'maps'
+# Improvements:
+# - Better local file management
