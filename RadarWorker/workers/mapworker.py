@@ -9,7 +9,7 @@ LOC_FOLS = config.LOC_FOLS
 # Manages ONE TILE ONLY, either rectangular or square
 # Minimum zoom level is 4
 class MapWorker():
-    def __init__(self, gps_coordinate, zoom_level=4, rectangular_tiles=True):
+    def __init__(self, gps_coordinate, zoom_level=0, rectangular_tiles=True):
         self.cl_wd()
         # These attributes should never change
         self.__zoom_level = zoom_level
@@ -28,6 +28,10 @@ class MapWorker():
     @property
     def gps_coordinate(self):
         return self.__gps_coordinate
+
+    @property
+    def gps_range(self):
+        return self.__gps_range
 
     @gps_coordinate.setter
     def gps_coordinate(self, gps_coordinate):

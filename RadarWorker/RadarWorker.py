@@ -1,6 +1,7 @@
 import logging, math, os, config, datetime, requests, txtparsing 
 from workers import MapWorker
 from txtparsing import DataWorker
+from workers import MapWorker 
 from PIL import Image
 
 
@@ -156,8 +157,8 @@ class RadarWorker:
     # Assumes that the pixel requested is in the data range
     def gps_to_pixel(self, gps_coor):
         range = self.__iem_range
-        lon_dif = abs(gps_coor[1] - self.__iem_range[1][0])
-        lat_dif = abs(self.__iem_range[0][1] - gps_coor[0])
+        lon_dif = gps_coor[1] - self.__iem_range[1][0]
+        lat_dif = self.__iem_range[0][1] - gps_coor[0]
         im  = Image.open(self.__img_path)
         im_width, im_height = im.size
 
@@ -166,18 +167,86 @@ class RadarWorker:
         logging.info('Converted gps coordinate to: x:{} y:{}'.format(x, y))
         return (x, y)
 
-    # Creates a transparent-background overlay to lay on an image with the gps bounds 
-    # passed as arguments
-    def create_overlay_image(self, bot_left, top_right, map_path):
-        logging.info('creating the overlay image')
-        bot_left_pix = self.gps_to_pixel(bot_left)
-        top_right_pix = self.gps_to_pixel(top_right)
-        img  = Image.open(self.__img_path)
-        region = img.crop((bot_left_pix[0], top_right_pix[1], top_right_pix[0], bot_left_pix[1]))
+    # Overlays nexrad data over weather tiles created by a MapWorker
+    # Areas with no data available are overlayed with a red tint
+    def create_overlay_image(self, map_worker):
+        logging.info(TAG+'creating a map overlayed with nexrad data')
+        mp_lat_r = map_worker.gps_range[0]
+        mp_lon_r = map_worker.gps_range[1]
 
-        region.save(LOC_FOLS['map']+'overlay.png', 'PNG')
-        self.apply_transparency_filter(LOC_FOLS['map']+'overlay.png')
-        self.layer_images(map_path, LOC_FOLS['map']+'overlay.png', LOC_FOLS['map']+'stitched+overlay.png')
+        map_img = Image.open(map_worker.tilepath)
+        mp_width, mp_height = map_img.size
+
+        iem = Image.open(self.__img_path).convert("RGBA")
+        iem_width, iem_height = iem.size
+
+        # Top right pixel point in iem image (left_top if gps)
+        iem_min_x, iem_min_y = self.gps_to_pixel((mp_lat_r[1], mp_lon_r[0])) 
+        iem_max_x, iem_max_y = self.gps_to_pixel((mp_lat_r[0], mp_lon_r[1]))
+
+        part_in_range = True
+        if (iem_max_x > iem_width and iem_min_x > iem_width) or iem_max_x < 0:
+            part_in_range = False
+        elif (iem_max_y > iem_height and iem_min_y > iem_height) or iem_max_y < 0:
+            part_in_range = False
+
+        # Figure out how many pixels are needed for the red no-data zone
+        add_x, add_y = ([], [])
+        if part_in_range:
+            # Handle the values for 'x'
+            if iem_min_x < 0:
+                add_x.append(iem_min_x * -1)
+                iem_min_x = 0
+            else:
+                add_x.append(0)
+            if iem_max_x > iem_width:
+                add_x.append(iem_max_x - iem_width)
+                iem_max_x = iem_width
+            else:
+                add_x.append(0)
+
+            # Handle the values for 'y'
+            if iem_min_y < 0:
+                add_y.append(iem_min_y * -1)
+                iem_min_y = 0
+            else:
+                add_y.append(0)
+            if iem_max_y > iem_height:
+                add_y.append(iem_max_y - iem_height)
+                iem_max_y = iem_height
+            else:
+                add_y.append(0)
+            
+            # Create a blank, transparent canvas to create ovelay on
+            canv_width = (iem_max_x - iem_min_x) + sum(add_x)
+            canv_height = (iem_max_y - iem_min_y) + sum(add_y)
+            canvas = Image.new('RGBA', (canv_width, canv_height), color = (0,0,0,0)) 
+
+            # Create a crop of data needed from IEM's png
+            crop = iem.crop((iem_min_x, iem_min_y, iem_max_x, iem_max_y))
+            crop = self.apply_transparency_filter(crop)
+
+            # Add all red overlays
+            canvas.paste(crop, (add_x[0], add_y[0]), crop)
+            red = Image.new('RGBA', (crop.size[0], add_y[0]), color=(230, 14, 14, 90))
+            canvas.paste(red, (add_x[0], 0), red)
+            red = Image.new('RGBA', (add_x[0], canv_height), color=(230, 14, 14, 90))
+            canvas.paste(red, (0, 0), red)
+            red = Image.new('RGBA', (add_x[1], canv_height), color=(230, 14, 14, 90))
+            canvas.paste(red, ((iem_max_x - iem_min_x) + add_x[0], 0), red)
+            red = Image.new('RGBA', (crop.size[0], add_y[1]), color=(230, 14, 14, 90))
+            canvas.paste(red, (add_x[0], (iem_max_y - iem_min_y) + add_y[0]), red)
+
+            # Paste data and filter onto map
+            canvas = canvas.resize(map_img.size, Image.ANTIALIAS)
+            map_img.paste(canvas, (0,0), canvas)
+        else:
+            canvas = Image.new('RGBA', (200, 100), color = (230, 14, 14, 90))
+            canvas = canvas.resize(map_img.size, Image.ANTIALIAS)
+            map_img.paste(canvas, (0,0), canvas)
+
+        map_img.save(LOC_FOLS['map']+'overlay+stitched.png', 'PNG')
+        logging.info(TAG+'completed map w/overlay')
 
     def get_reflectivity(self, gps_location):
         # Code to get the reflectivity for a given location at the sim_time
@@ -198,16 +267,6 @@ class RadarWorker:
 
         return printout
 
-    @staticmethod
-    def layer_images(bottom, top, final):
-        top = Image.open(top)
-        bottom = Image.open(bottom)
-
-        top = top.resize(bottom.size, Image.ANTIALIAS)
-
-        bottom.paste(top, (0, 0), top)
-        bottom.save(final,'PNG')
-
     # Simple sign-extension method
     @staticmethod
     def s_ext(str, length):
@@ -223,9 +282,8 @@ class RadarWorker:
             os.unlink(LOC_FOLS['nexrad']+file)
 
     @staticmethod
-    def apply_transparency_filter(path):
+    def apply_transparency_filter(img):
         logging.info(TAG+'making all black pixels transparent')
-        img  = Image.open(path)
         img = img.convert('RGBA')
         data = img.getdata()
 
@@ -237,7 +295,7 @@ class RadarWorker:
                 new_data.append(item)
 
         img.putdata(new_data)
-        img.save(path, 'PNG')
+        return img
 
 # Class to represent a radar station, originally in NEXRADWorker
 class RadarStation():
